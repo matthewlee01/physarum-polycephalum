@@ -13,8 +13,8 @@ let scale;
 
 let timing = {
   draw: 0,
-  calc: 0
-}
+  calc: 0,
+};
 
 function setup() {
   let canvasSize = min(windowWidth, windowHeight);
@@ -37,17 +37,16 @@ function setup() {
 function draw() {
   if (!frozen && randomStimulus) {
     for (let i = 0; i < 16; i++) {
-      stimulateRandom()
+      stimulateRandom();
     }
-  };
+  }
 
   let coords = toDraw.pop();
-  while(coords) {
-    fill(grid[coords[0]][coords[1]]*100+50);
-    square(coords[0]*scale, coords[1]*scale, scale);
+  while (coords) {
+    fill(grid[coords[0]][coords[1]] * 100 + 50);
+    square(coords[0] * scale, coords[1] * scale, scale);
     coords = toDraw.pop();
   }
-  
 }
 
 function swapGrids() {
@@ -61,38 +60,35 @@ function swapGrids() {
 // or -1 if at the edge of the grid
 function neighbours(x, y) {
   let neighbours = [-1, -1, -1, -1];
-  if (x > 0) neighbours[0] = grid[x-1][y];
-  if (y > 0) neighbours[1] = grid[x][y-1];
-  if (x < size-1) neighbours[2] = grid[x+1][y];
-  if (y < size-1) neighbours[3] = grid[x][y+1];
+  if (x > 0) neighbours[0] = grid[x - 1][y];
+  if (y > 0) neighbours[1] = grid[x][y - 1];
+  if (x < size - 1) neighbours[2] = grid[x + 1][y];
+  if (y < size - 1) neighbours[3] = grid[x][y + 1];
   return neighbours;
 }
 
-
 function mouseDragged() {
-  let x = floor(mouseX/scale);
-  let y = floor(mouseY/scale);
+  let x = floor(mouseX / scale);
+  let y = floor(mouseY / scale);
   grid[x][y] = 2;
   toDraw.push([x, y]);
 }
 
 function mousePressed() {
-  let x = floor(mouseX/scale);
-  let y = floor(mouseY/scale);
+  let x = floor(mouseX / scale);
+  let y = floor(mouseY / scale);
   grid[x][y] = 0;
   toDraw.push([x, y]);
 }
 
 // forms cell inside/walls
 function harden() {
+  stimulusCandidates = [];
   for (let x = 0; x < size; x++) {
     for (let y = 0; y < size; y++) {
       let state = grid[x][y];
-      if (
-        (state >= 2) &&
-        neighbours(x, y).every((state) => state >= 2))
-      {
-        nextGrid[x][y] = 1
+      if (state >= 2 && neighbours(x, y).every((state) => state > 0)) {
+        nextGrid[x][y] = 1;
       } else {
         nextGrid[x][y] = min(state, 2);
       }
@@ -108,33 +104,26 @@ function harden() {
 function stimulate(x, y) {
   // (1) check that site is in state 2
   if (grid[x][y] === 2) {
-    
     // (2) randomly choose a neighbour in state 0, then swap
-    let swapped = conditionalSwap(x, y, 0);
+    let swapped = conditionalSwap(x, y, [0]);
     if (swapped) {
       toDraw.push([swapped[0], swapped[1]]);
     } else {
-      return;
+      return false;
     }
-    
+
     // (3) set all state 1 sites to state 2
-    hardenAll();
     let moves = 0;
     while (true) {
-      
       // (4) mark current site of bubble
       toDraw.push([x, y]);
-      
+
       // (5) check if bubble has been excluded
-      if (checkExcluded(x, y)) break;
-      
       // (6) check if move count has been exceeded
-      if (moves > maxMoves) {
-        break;
-      }
-      
+      if (checkExcluded(x, y) || moves > maxMoves) break;
+
       // (7) swap bubble with neighbour in state 2
-      swapped = conditionalSwap(x, y, 2);
+      swapped = conditionalSwap(x, y, [2, 1]);
       if (swapped) {
         moves++;
         grid[x][y] = 3;
@@ -152,68 +141,45 @@ function stimulate(x, y) {
 
 // stimulates a random cell
 function stimulateRandom() {
-  let coords = stimulusCandidates[Math.floor(Math.random()*stimulusCandidates.length)];
+  let coords =
+    stimulusCandidates[Math.floor(Math.random() * stimulusCandidates.length)];
   if (coords) {
-    stimulusCandidates = [];
     stimulate(coords[0], coords[1]);
-  }
-}
-
-// stimulates a random cell
-// function stimulateRandom() {
-//   let xStim, yStim;
-//   do {
-//     xStim = floor(Math.random() * size);
-//     yStim = floor(Math.random() * size);
-//   } while (!stimulate(xStim, yStim));
-// }
-
-// sets all cell sites to hardened state
-function hardenAll() {
-  for (let x = 0; x < size; x++) {
-    for (let y = 0; y < size; y++) {
-      if (grid[x][y] === 1) {
-        grid[x][y] = 2;
-      }
-    }
   }
 }
 
 // checks if a bubble has enough 0 neighbours to be considered excluded from a cell
 function checkExcluded(x, y) {
-  let zeroNeighbourCount = 
-      neighbours(x, y).filter(
-        (state) => state === 0
-      ).length;
+  let zeroNeighbourCount = neighbours(x, y).filter(
+    (state) => state === 0
+  ).length;
   return zeroNeighbourCount >= exclusionThreshold;
 }
 
 // swaps (x, y) with a random neighbour with given state.
 // returns coordinates of the swap, or false if no swap.
-function conditionalSwap(x, y, state) {
+function conditionalSwap(x, y, states) {
   let swapDirections = [];
-  if (x > 0 && grid[x-1][y] === state) {
-    swapDirections.push([-1, 0])
+  if (x > 0 && states.includes(grid[x - 1][y])) {
+    swapDirections.push([-1, 0]);
   }
-  if (x < size-1 && grid[x+1][y] === state) {
+  if (x < size - 1 && states.includes(grid[x + 1][y])) {
     swapDirections.push([1, 0]);
   }
-  if (y > 0 && grid[x][y-1] === state) {
+  if (y > 0 && states.includes(grid[x][y - 1])) {
     swapDirections.push([0, -1]);
   }
-  if (y < size-1 && grid[x][y+1] === state) {
+  if (y < size - 1 && states.includes(grid[x][y + 1])) {
     swapDirections.push([0, 1]);
   }
   if (swapDirections.length === 0) {
     return false;
   }
-  direction = swapDirections[
-    Math.floor(Math.random()*swapDirections.length)
-  ];
-  let newX = x+direction[0];
-  let newY = y+direction[1];
+  direction = swapDirections[Math.floor(Math.random() * swapDirections.length)];
+  let newX = x + direction[0];
+  let newY = y + direction[1];
   grid[newX][newY] = grid[x][y];
-  grid[x][y] = state;
+  grid[x][y] = states[0];
   return [newX, newY];
 }
 
@@ -221,14 +187,14 @@ function conditionalSwap(x, y, state) {
 function seed(x, y) {
   for (let i = 0; i < seedSize; i++) {
     for (let j = 0; j < seedSize; j++) {
-      grid[x+i][y+j] = 2;
-      toDraw.push([x+i, y+j]);
-      grid[x+i][y-j] = 2;
-      toDraw.push([x+i, y-j]);
-      grid[x-i][y+j] = 2;
-      toDraw.push([x-i, y+j]);
-      grid[x-i][y-j] = 2;
-      toDraw.push([x-i, y-j]);
+      grid[x + i][y + j] = 2;
+      toDraw.push([x + i, y + j]);
+      grid[x + i][y - j] = 2;
+      toDraw.push([x + i, y - j]);
+      grid[x - i][y + j] = 2;
+      toDraw.push([x - i, y + j]);
+      grid[x - i][y - j] = 2;
+      toDraw.push([x - i, y - j]);
     }
   }
 }
@@ -239,15 +205,16 @@ function keyPressed() {
       harden();
       break;
     case SHIFT:
-      stimulate(floor(mouseX/scale), floor(mouseY/scale));
-      console.log(frameRate())
+      stimulate(floor(mouseX / scale), floor(mouseY / scale));
+      console.log(frameRate());
       break;
     case RETURN:
       harden();
       frozen = !frozen;
-      console.log(timing);
+      console.log(timing, frozen);
+      console.log(grid);
       break;
     case OPTION:
-      seed(floor(mouseX/scale), floor(mouseY/scale));
+      seed(floor(mouseX / scale), floor(mouseY / scale));
   }
 }
