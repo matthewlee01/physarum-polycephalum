@@ -1,21 +1,24 @@
-let size = 512;
-let exclusionThreshold = 4;
-let maxMoves = 10000;
-let seedSize = 64;
-let randomStimulus = true;
-let speed = 32;
+const size = 256;
+const exclusionThreshold = 4;
+const maxAttempts = 10000;
+const seedSize = 8;
+const foodSize = 32;
+const randomStimulus = false;
+const speed = 32;
+const targetFPS = 60;
 
 let grid = [];
 let nextGrid = [];
 let updated = [];
+let stimulationPoints = [];
 let frozen = true;
 let scale;
 
 function setup() {
-  let canvasSize = min(windowWidth, windowHeight);
-  let c = createCanvas(canvasSize, canvasSize);
+  const canvasSize = min(windowWidth, windowHeight);
+  const c = createCanvas(canvasSize, canvasSize);
   c.parent("container");
-  frameRate(60);
+  frameRate(targetFPS);
   scale = canvasSize / size;
   noStroke();
   for (let i = 0; i < size; i++) {
@@ -30,9 +33,12 @@ function setup() {
 }
 
 function draw() {
-  if (!frozen && randomStimulus) {
+  if (!frozen) {
     for (let i = 0; i < speed; i++) {
-      stimulateRandom();
+      if (randomStimulus) {
+        stimulateRandom();
+      }
+      stimulatePoint();
     }
   }
 
@@ -45,7 +51,7 @@ function draw() {
 }
 
 function swapGrids() {
-  let temp = grid;
+  const temp = grid;
   grid = nextGrid;
   nextGrid = temp;
 }
@@ -53,7 +59,7 @@ function swapGrids() {
 // returns the value of each neighbour in order
 // [Left, Up, Right, Down]
 // or -1 if at the edge of the grid
-function neighbours(x, y) {
+function neighbours([x, y]) {
   let neighbours = [];
   if (x > 0) neighbours.push([x - 1, y]);
   if (y > 0) neighbours.push([x, y - 1]);
@@ -63,15 +69,15 @@ function neighbours(x, y) {
 }
 
 function mouseDragged() {
-  let x = floor(mouseX / scale);
-  let y = floor(mouseY / scale);
+  const x = floor(mouseX / scale);
+  const y = floor(mouseY / scale);
   grid[x][y] = 2;
   updated.push([x, y]);
 }
 
 function mousePressed() {
-  let x = floor(mouseX / scale);
-  let y = floor(mouseY / scale);
+  const x = floor(mouseX / scale);
+  const y = floor(mouseY / scale);
   grid[x][y] = 0;
   updated.push([x, y]);
 }
@@ -80,9 +86,9 @@ function mousePressed() {
 function harden() {
   let i = 0;
   while (i < updated.length) {
-    let [x, y] = updated[i];
-    let state = grid[x][y];
-    let neighbourhood = neighbours(x, y);
+    const [x, y] = updated[i];
+    const state = grid[x][y];
+    const neighbourhood = neighbours([x, y]);
     let nextState;
     if (
       state >= 2 &&
@@ -104,16 +110,14 @@ function harden() {
 }
 
 // the main behaviour of the cell, taken from Gunji paper
-function stimulate(x, y) {
-
+function stimulate([x, y]) {
   // (1) check that site is in state 2
   if (grid[x][y] === 2) {
-
     // (2) randomly choose a neighbour in state 0, then swap
-    let swapped = conditionalSwap(x, y, [0]);
+    let swapped = conditionalSwap([x, y], [0]);
     if (swapped) {
       updated.push([swapped[0], swapped[1]]);
-      neighbours(swapped[0], swapped[1]).forEach((neighbour) => updated.push(neighbour));
+      neighbours(swapped).forEach((neighbour) => updated.push(neighbour));
     } else {
       return false;
     }
@@ -122,14 +126,14 @@ function stimulate(x, y) {
     while (true) {
       // (4) mark current site of bubble
       updated.push([x, y]);
-      neighbours(x, y).forEach((neighbour) => updated.push(neighbour));
+      neighbours([x, y]).forEach((neighbour) => updated.push(neighbour));
 
       // (5) check if bubble has been excluded
       // (6) check if move count has been exceeded
-      if (checkExcluded(x, y) || moves > maxMoves) break;
+      if (checkExcluded([x, y]) || moves > maxAttempts) break;
 
       // (7) swap bubble with neighbour in state 2
-      swapped = conditionalSwap(x, y, [2, 1]);
+      swapped = conditionalSwap([x, y], [2, 1]);
       if (swapped) {
         moves++;
         grid[x][y] = 3;
@@ -153,12 +157,26 @@ function stimulateRandom() {
   do {
     xStim = floor(Math.random() * size);
     yStim = floor(Math.random() * size);
-  } while (!stimulate(xStim, yStim));
+  } while (!stimulate([xStim, yStim]));
+}
+
+function stimulatePoint() {
+  let coords, i;
+  let attempts = 0;
+  const l = stimulationPoints.length;
+  if (l > 0) {
+    do {
+      attempts++;
+      coordIdx = Math.floor(Math.random() * l);
+      coords = stimulationPoints[coordIdx];
+    } while (!stimulate(coords) && attempts < maxAttempts);
+    // stimulationPoints.splice(coordIdx, 1);
+  }
 }
 
 // checks if a bubble has enough 0 neighbours to be considered excluded from a cell
-function checkExcluded(x, y) {
-  let zeroNeighbourCount = neighbours(x, y).filter(
+function checkExcluded([x, y]) {
+  const zeroNeighbourCount = neighbours([x, y]).filter(
     (coords) => grid[coords[0]][coords[1]] === 0
   ).length;
   return zeroNeighbourCount >= exclusionThreshold;
@@ -166,7 +184,7 @@ function checkExcluded(x, y) {
 
 // swaps (x, y) with a random neighbour with given state.
 // returns coordinates of the swap, or false if no swap.
-function conditionalSwap(x, y, states) {
+function conditionalSwap([x, y], states) {
   let swapDirections = [];
   if (x > 0 && states.includes(grid[x - 1][y])) {
     swapDirections.push([-1, 0]);
@@ -184,30 +202,52 @@ function conditionalSwap(x, y, states) {
     return false;
   }
   direction = swapDirections[Math.floor(Math.random() * swapDirections.length)];
-  let newX = x + direction[0];
-  let newY = y + direction[1];
+  const newX = x + direction[0];
+  const newY = y + direction[1];
   grid[newX][newY] = grid[x][y];
   grid[x][y] = states[0];
   return [newX, newY];
 }
 
-// creates a cell of size seedSize at (x, y)
-function seed(x, y) {
-  for (let i = 0; i < seedSize; i++) {
-    for (let j = 0; j < seedSize; j++) {
-      grid[x + i][y + j] = 2;
-      updated.push([x + i, y + j]);
-      grid[x + i][y - j] = 2;
-      updated.push([x + i, y - j]);
-      grid[x - i][y + j] = 2;
-      updated.push([x - i, y + j]);
-      grid[x - i][y - j] = 2;
-      updated.push([x - i, y - j]);
+function drawDiamond([x, y], radius, callbackFn) {
+  for (let i = 0; i < radius; i++) {
+    for (let j = 0; j < radius - i; j++) {
+      if (x + i < size && y + j < size) {
+        callbackFn([x + i, y + j]);
+      }
+      if (x + i < size && y - j >= 0) {
+        callbackFn([x + i, y - j]);
+      }
+      if (x - i >= 0 && y + j < size) {
+        callbackFn([x - i, y + j]);
+      }
+      if (x - i >= 0 && y - j >= 0) {
+        callbackFn([x - i, y - j]);
+      }
     }
   }
 }
 
+// creates a diamond-shaped cell of size seedSize at (x, y)
+function seed([x, y], radius) {
+  drawDiamond([x, y], radius, ([x, y]) => {
+    grid[x][y] = 2;
+    updated.push([x, y]);
+  });
+  harden();
+}
+
+function addStimulationZone([x, y], radius) {
+  fill("rgba(0, 255, 0, 0.1)");
+  drawDiamond([x, y], radius, ([x, y]) => {
+    stimulationPoints.push([x, y]);
+    square(x * scale, y * scale, scale);
+  });
+}
+
 function keyPressed() {
+  const x = floor(mouseX / scale);
+  const y = floor(mouseY / scale);
   switch (keyCode) {
     case CONTROL:
       harden();
@@ -224,10 +264,18 @@ function keyPressed() {
       }
       harden();
       frozen = !frozen;
-      console.log(timing, frozen);
       console.log(grid);
       break;
     case OPTION:
-      seed(floor(mouseX / scale), floor(mouseY / scale));
+      seed([x, y], seedSize);
+      break;
+    case TAB:
+      neighbours([x, y]).forEach((coords) =>
+        neighbours(coords).forEach((coords) =>
+          addStimulationZone(coords, foodSize)
+        )
+      );
+      console.log(stimulationPoints.length);
+      break;
   }
 }
