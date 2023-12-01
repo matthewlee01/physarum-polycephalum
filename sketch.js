@@ -1,13 +1,14 @@
 const size = 256;
-let exclusionThreshold = 2;
-let maxAttempts = 1000;
+let drawRadius;
+let exclusionThreshold = 3;
+let maxAttempts = 4096;
 let seedSize = 32;
 let foodSize = 32;
-let randomStimulus = true;
-let speed = 16;
+let randomFactor = 0.2;
+let speed = 64;
 const targetFPS = 60;
 const showFPS = true;
-const consumeFood = true;
+const consumeFood = false;
 
 let grid = [];
 let nextGrid = [];
@@ -22,41 +23,22 @@ function setup() {
   c.parent("container");
   frameRate(targetFPS);
   scale = ceil(canvasSize / size);
+  drawRadius = floor(size / 16);
   noStroke();
   textSize(16);
   for (let i = 0; i < size; i++) {
     grid.push(new Array(size).fill(0));
     nextGrid.push(new Array(size).fill(0));
   }
-  for (let x = 0; x < size; x++) {
-    for (let y = 0; y < size; y++) {
-      updated.push([x, y]);
-    }
-  }
+  updateAll();
 }
 
 function draw() {
-  if (!frozen) {
-    for (let i = 0; i < speed; i++) {
-      if (randomStimulus) {
-        stimulateRandom();
-      }
-      stimulatePoint();
-    }
-  }
+  runStimulations();
 
-  let coords = updated.pop();
-  while (coords) {
-    fill(grid[coords[0]][coords[1]] * 100 + 50);
-    square(coords[0] * scale, coords[1] * scale, scale);
-    coords = updated.pop();
-  }
+  renderGrid();
   if (showFPS) {
-    stroke(250);
-    fill(0);
-    rect(0, 0, 48, 32);
-    text(floor(frameRate()) + "fps", 4, 22);
-    noStroke();
+    renderFPS();
   }
 }
 
@@ -64,12 +46,8 @@ function keyPressed() {
   const x = floor(mouseX / scale);
   const y = floor(mouseY / scale);
   switch (keyCode) {
-    case CONTROL:
-      harden();
-      break;
-    case SHIFT:
+    case TAB:
       stimulateRandom();
-      console.log(frameRate());
       break;
     case RETURN:
       for (let x = 0; x < size; x++) {
@@ -80,42 +58,55 @@ function keyPressed() {
       harden();
       frozen = !frozen;
       break;
-    case OPTION:
-      seed([x, y], seedSize);
-      break;
-    case TAB:
-      neighbours([x, y]).forEach((coords) =>
-        neighbours(coords).forEach((coords) =>
-          addStimulationZone(coords, foodSize)
-        )
-      );
-      break;
     case UP_ARROW:
-      exclusionThreshold++;
+      drawRadius++;
       break;
     case DOWN_ARROW:
-      exclusionThreshold--;
+      drawRadius--;
       break;
   }
 }
 
 function mouseDragged() {
-  const x = floor(mouseX / scale);
-  const y = floor(mouseY / scale);
-  grid[x][y] = 2;
-  updated.push([x, y]);
+  drawMouse();
 }
 
-function mousePressed() {
+function mouseClicked() {
+  drawMouse();
+}
+
+function drawMouse() {
   const x = floor(mouseX / scale);
   const y = floor(mouseY / scale);
-  grid[x][y] = 0;
-  updated.push([x, y]);
+  if (keyIsDown(SHIFT)) {
+    addStimulationZone([x, y], drawRadius);
+  } else {
+    drawDiamond([x, y], drawRadius, ([x, y]) => {
+      grid[x][y] = 2;
+      updated.push([x, y]);
+    });
+  }
 }
-// returns the value of each neighbour in order
-// [Left, Up, Right, Down]
 
-// or -1 if at the edge of the grid
+// manually renders the grid (no shaders)
+function renderGrid() {
+  let coords = updated.pop();
+  while (coords) {
+    fill(grid[coords[0]][coords[1]] * 100 + 50);
+    square(coords[0] * scale, coords[1] * scale, scale);
+    coords = updated.pop();
+  }
+}
+
+function renderFPS() {
+  stroke(250);
+  fill(0);
+  rect(0, 0, 48, 32);
+  text(floor(frameRate()) + "fps", 4, 22);
+  noStroke();
+}
+
+// returns the coordinates of each neighbour
 function neighbours([x, y]) {
   let neighbours = [];
   if (x > 0) neighbours.push([x - 1, y]);
@@ -223,6 +214,17 @@ function stimulatePoint() {
   }
 }
 
+function runStimulations() {
+  if (!frozen) {
+    for (let i = 0; i < speed*randomFactor; i++) {
+      stimulateRandom();
+    }
+    for (let i = 0; i < speed*(1-randomFactor); i++) {
+      stimulatePoint();
+    }
+  }
+}
+
 // checks if a bubble has enough 0 neighbours to be considered excluded from a cell
 function checkExcluded([x, y]) {
   const zeroNeighbourCount = neighbours([x, y]).filter(
@@ -249,21 +251,34 @@ function randomSwap([x, y], states) {
   }
 }
 
+function updateAll() {
+  for (let x = 0; x < size; x++) {
+    for (let y = 0; y < size; y++) {
+      updated.push([x, y]);
+    }
+  }
+}
+
 // calls callbackFn on all tiles in a diamond shape
 function drawDiamond([x, y], radius, callbackFn) {
+  callbackFn([x, y]);
   for (let i = 0; i < radius; i++) {
     for (let j = 0; j < radius - i; j++) {
-      if (x + i < size && y + j < size) {
-        callbackFn([x + i, y + j]);
+      if (j > 0) {
+        if (x + i < size && y + j < size) {
+          callbackFn([x + i, y + j]);
+        }
+        if (x - i >= 0 && y - j >= 0) {
+          callbackFn([x - i, y - j]);
+        }
       }
-      if (x + i < size && y - j >= 0) {
-        callbackFn([x + i, y - j]);
-      }
-      if (x - i >= 0 && y + j < size) {
-        callbackFn([x - i, y + j]);
-      }
-      if (x - i >= 0 && y - j >= 0) {
-        callbackFn([x - i, y - j]);
+      if (i > 0) {
+        if (x - i >= 0 && y + j < size) {
+          callbackFn([x - i, y + j]);
+        }
+        if (x + i < size && y - j >= 0) {
+          callbackFn([x + i, y - j]);
+        }
       }
     }
   }
