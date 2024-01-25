@@ -61,13 +61,11 @@ function preload() {
 
 function setup() {
   let canvasSize = floor(min(windowWidth, windowHeight));
-  let c;
   if (shaderRender) {
-    c = createCanvas(canvasSize, canvasSize, WEBGL);
+    createCanvas(canvasSize, canvasSize, WEBGL);
   } else {
-    c = createCanvas(canvasSize, canvasSize);
+    createCanvas(canvasSize, canvasSize);
   }
-  c.parent("container");
   frameRate(targetFPS);
   scale = ceil(canvasSize / size);
   drawRadius = floor(size / 24);
