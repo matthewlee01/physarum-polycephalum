@@ -48,21 +48,34 @@ let stimulationSeeds = [
   { x: size / 2, y: size / 2, dx: 8, dy: 4 },
 ];
 let frozen = true;
-let font;
-let scale;
-let gridShader;
-let img;
+let font, scale, gridShader, g1, g2, blurH, blurV, img, noise;
 
 function preload() {
   if (shaderRender) {
+    noise = loadImage("blue470.png");
     gridShader = loadShader("shader.vert", "shader.frag");
+    blurH = loadShader("shader.vert", "blur.frag");
+    blurV = loadShader("shader.vert", "blur.frag");
   }
+  const socket = io('http://localhost:3000');
+  socket.on("connect", () => {
+    console.log("connected");
+  });
+
+  socket.on('message', (data) => {
+    temperature = data;
+    console.log(data);
+  });
+
+
 }
 
 function setup() {
   let canvasSize = floor(min(windowWidth, windowHeight));
   if (shaderRender) {
     createCanvas(canvasSize, canvasSize, WEBGL);
+    g1 = createGraphics(canvasSize, canvasSize, WEBGL);
+    g2 = createGraphics(canvasSize, canvasSize, WEBGL);
   } else {
     createCanvas(canvasSize, canvasSize);
   }
@@ -153,7 +166,7 @@ function renderShader() {
   while (coords) {
     [x, y] = coords;
     i = 4 * (size * y + x);
-    value = 64 * grid[x][y];
+    value = 80 * pow(grid[x][y], 1.5);
     img.pixels[i] = value;
     img.pixels[i + 1] = value;
     img.pixels[i + 2] = value;
@@ -162,9 +175,25 @@ function renderShader() {
   }
   img.updatePixels();
 
+  // horizontal blur
+  g1.shader(blurH);
+  blurH.setUniform("tex0", img);
+  blurH.setUniform("texelSize", [1.0 / width, 1.0 / height]);
+  blurH.setUniform("direction", [1.0, 0.0]);
+
+  g1.rect(0, 0, width, height);
+
+  // vertical blur
+  g2.shader(blurV);
+  blurV.setUniform("tex0", g1);
+  blurV.setUniform("texelSize", [1.0 / width, 1.0 / height]);
+  blurV.setUniform("direction", [0.0, 1.0]);
+
+  g2.rect(0, 0, width, height);
   gridShader.setUniform("u_resolution", [width, height]);
   gridShader.setUniform("u_time", millis() / 1000.0);
-  gridShader.setUniform("u_grid", img);
+  gridShader.setUniform("u_grid", g2);
+  gridShader.setUniform("u_noise", noise);
 
   gridShader.setUniform("u_temperature", temperature);
   gridShader.setUniform("u_wind", wind);
@@ -225,8 +254,8 @@ function swapGrids() {
 }
 
 function updateEnvironment() {
-  temperature = 0.5 + 0.5 * sin(millis() * 5 * 0.00004);
-  wind = 0.5 + 0.5 * sin(millis() * 5 * 0.00016);
+  // temperature = 0.5 + 0.5 * sin(millis() * 5 * 0.00004);
+  // wind = 0.5 + 0.5 * sin(millis() * 5 * 0.00016);
   // humidity = 0.75 + 0.25 * sin(millis() * 7 * 0.00002);
   // pressure = 0.75 + 0.25 * sin(millis() * 11 * 0.00002);
 
