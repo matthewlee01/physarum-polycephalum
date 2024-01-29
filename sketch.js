@@ -48,11 +48,12 @@ let stimulationSeeds = [
   { x: size / 2, y: size / 2, dx: 8, dy: 4 },
 ];
 let frozen = true;
-let font, scale, gridShader, g1, g2, blurH, blurV, img, noise;
+let font, scale, gridShader, g1, g2, blurH, blurV, img, noise1, noise2;
 
 function preload() {
   if (shaderRender) {
-    noise = loadImage("blue470.png");
+    noise1 = loadImage("blue470.png");
+    noise2 = loadImage("perlin1000.png");
     gridShader = loadShader("shader.vert", "shader.frag");
     blurH = loadShader("shader.vert", "blur.frag");
     blurV = loadShader("shader.vert", "blur.frag");
@@ -71,7 +72,7 @@ function preload() {
 }
 
 function setup() {
-  let canvasSize = floor(min(windowWidth, windowHeight));
+  let canvasSize = 1024;
   if (shaderRender) {
     createCanvas(canvasSize, canvasSize, WEBGL);
     g1 = createGraphics(canvasSize, canvasSize, WEBGL);
@@ -193,7 +194,8 @@ function renderShader() {
   gridShader.setUniform("u_resolution", [width, height]);
   gridShader.setUniform("u_time", millis() / 1000.0);
   gridShader.setUniform("u_grid", g2);
-  gridShader.setUniform("u_noise", noise);
+  gridShader.setUniform("u_noise1", noise1);
+  gridShader.setUniform("u_noise2", noise2);
 
   gridShader.setUniform("u_temperature", temperature);
   gridShader.setUniform("u_wind", wind);
@@ -254,7 +256,7 @@ function swapGrids() {
 }
 
 function updateEnvironment() {
-  // temperature = 0.5 + 0.5 * sin(millis() * 5 * 0.00004);
+  temperature = 0.5 + 0.5 * sin(millis() * 5 * 0.00004);
   // wind = 0.5 + 0.5 * sin(millis() * 5 * 0.00016);
   // humidity = 0.75 + 0.25 * sin(millis() * 7 * 0.00002);
   // pressure = 0.75 + 0.25 * sin(millis() * 11 * 0.00002);
