@@ -5,16 +5,29 @@ const targetFPS = 60;
 const shaderRender = true;
 let dynamicStimulationZones = true;
 
+let transition = 1;
+
 let temperature = 0.5;
+let temperature_p = 0.5;
+let temperature_n = 0.5;
+
 let pressure = 0.5;
+let pressure_p = 0.5;
+let pressure_n = 0.5;
+
 let wind = 0.5;
-let humidity = 0.5;
+let wind_p = 0.5;
+let wind_n = 0.5;
+
+let moisture = 0.5;
+let moisture_p = 0.5;
+let moisture_n = 0.5;
 
 let ts = 0;
 let ps = 0;
 let ws = 0;
 let hs = 0;
-let c = 0; 
+let c = 0;
 
 let stimulationRigidity = 64;
 let exclusionThreshold = 3;
@@ -48,27 +61,31 @@ let stimulationSeeds = [
   { x: size / 2, y: size / 2, dx: 8, dy: 4 },
 ];
 let frozen = true;
-let font, scale, gridShader, g1, g2, blurH, blurV, img, noise1, noise2;
+let font, scale, gridShader, g1, g2, blurH, blurV, img, noise;
 
 function preload() {
   if (shaderRender) {
-    noise1 = loadImage("blue470.png");
-    noise2 = loadImage("perlin1000.png");
+    noise = loadImage("blue470.png");
     gridShader = loadShader("shader.vert", "shader.frag");
     blurH = loadShader("shader.vert", "blur.frag");
     blurV = loadShader("shader.vert", "blur.frag");
   }
-  const socket = io('http://localhost:3000');
+  const socket = io("http://localhost:3000");
   socket.on("connect", () => {
     console.log("connected");
   });
 
-  socket.on('message', (data) => {
-    temperature = data;
-    console.log(data);
+  socket.on("message", (data) => {
+    transition = 0;
+    temperature_p = temperature;
+    temperature_n = min(1, data.temperature + temperature);
+    pressure_p = pressure;
+    pressure_n = min(1, data.pressure + pressure);
+    wind_p = wind;
+    wind_n = min(1, data.wind + wind);
+    moisture_p = moisture;
+    moisture_n = min(1, data.humidity + moisture);
   });
-
-
 }
 
 function setup() {
@@ -108,18 +125,16 @@ function draw() {
 }
 
 function keyPressed() {
-  const x = floor(mouseX / scale);
-  const y = floor(mouseY / scale);
   switch (keyCode) {
     case TAB:
       stimulateRandom();
       break;
     case RETURN:
       console.log(frameRate());
-      console.log('temp', ts/c);
-      console.log('wind', ws/c);
-      console.log('humi', hs/c);
-      console.log('pres', ps/c);
+      console.log("temp", ts / c);
+      console.log("wind", ws / c);
+      console.log("humi", hs / c);
+      console.log("pres", ps / c);
       console.log(c);
       for (let x = 0; x < size; x++) {
         for (let y = 0; y < size; y++) {
@@ -135,6 +150,8 @@ function keyPressed() {
     case DOWN_ARROW:
       drawRadius--;
       break;
+    case BACKSPACE:
+      fullscreen(!fullscreen());
   }
 }
 
@@ -180,7 +197,7 @@ function renderShader() {
   g1.shader(blurH);
   blurH.setUniform("tex0", img);
   blurH.setUniform("texelSize", [1.0 / width, 1.0 / height]);
-  blurH.setUniform("direction", [1.0, 0.0]);
+  blurH.setUniform("direction", [0.4+(1-pressure)*0.6, 0.0]);
 
   g1.rect(0, 0, width, height);
 
@@ -188,30 +205,29 @@ function renderShader() {
   g2.shader(blurV);
   blurV.setUniform("tex0", g1);
   blurV.setUniform("texelSize", [1.0 / width, 1.0 / height]);
-  blurV.setUniform("direction", [0.0, 1.0]);
+  blurV.setUniform("direction", [0.0, 0.4+(1-pressure)*0.6]);
 
   g2.rect(0, 0, width, height);
   gridShader.setUniform("u_resolution", [width, height]);
   gridShader.setUniform("u_time", millis() / 1000.0);
   gridShader.setUniform("u_grid", g2);
-  gridShader.setUniform("u_noise1", noise1);
-  gridShader.setUniform("u_noise2", noise2);
+  gridShader.setUniform("u_noise", noise);
 
   gridShader.setUniform("u_temperature", temperature);
   gridShader.setUniform("u_wind", wind);
   gridShader.setUniform("u_pressure", pressure);
-  gridShader.setUniform("u_humidity", humidity);
+  gridShader.setUniform("u_moisture", moisture);
 
   shader(gridShader);
   rect(0, 0, width, height);
-  if (frameRate() < 20) {
-    ts += temperature;
-    ws += wind;
-    hs += humidity;
-    ps += pressure;
-    c++;
-    
-  }
+  // if (frameRate() < 20) {
+  //   ts += temperature;
+  //   ws += wind;
+  //   hs += moisture;
+  //   ps += pressure;
+  //   c++;
+
+  // }
 }
 
 // manually renders the grid (no shaders)
@@ -256,14 +272,21 @@ function swapGrids() {
 }
 
 function updateEnvironment() {
-  temperature = 0.5 + 0.5 * sin(millis() * 5 * 0.00004);
+  // temperature = 0.5 + 0.5 * sin(millis() * 5 * 0.00004);
   // wind = 0.5 + 0.5 * sin(millis() * 5 * 0.00016);
-  // humidity = 0.75 + 0.25 * sin(millis() * 7 * 0.00002);
+  // moisture = 0.75 + 0.25 * sin(millis() * 7 * 0.00002);
   // pressure = 0.75 + 0.25 * sin(millis() * 11 * 0.00002);
+  if (transition < 1) {
+    transition += 0.01;
+    temperature = lerp(temperature_p, temperature_n, transition);
+    wind = lerp(wind_p, wind_n, transition);
+    moisture = lerp(moisture_p, moisture_n, transition);
+    pressure = lerp(pressure_p, pressure_n, transition);
+  }
 
   stimulationRigidity = floor(
     map(
-      2 * pressure - humidity,
+      2 * pressure - moisture,
       0,
       2,
       MIN_STIMULATION_RIGIDITY,
@@ -278,7 +301,7 @@ function updateEnvironment() {
     MAX_EXCLUSION_THRESHOLD
   );
   speed = map(
-    2 * temperature + 2 * pressure + wind - humidity,
+    2 * temperature + 2 * pressure + wind - moisture,
     0,
     4,
     MIN_SPEED,
@@ -292,7 +315,7 @@ function updateEnvironment() {
     MAX_STIMULATION_SIZE
   );
   volatility = map(
-    temperature - 2 * humidity,
+    temperature - 2 * moisture,
     -1,
     1,
     MIN_VOLATILITY,
