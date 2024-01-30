@@ -15,10 +15,6 @@ let pressure = 0.5;
 let pressure_p = 0.5;
 let pressure_n = 0.5;
 
-let wind = 0.5;
-let wind_p = 0.5;
-let wind_n = 0.5;
-
 let moisture = 0.5;
 let moisture_p = 0.5;
 let moisture_n = 0.5;
@@ -76,15 +72,15 @@ function preload() {
   });
 
   socket.on("message", (data) => {
+    console.log(data)
     transition = 0;
     temperature_p = temperature;
-    temperature_n = min(1, data.temperature + temperature);
+    temperature_n = max(0, min(1, data.temperature + temperature));
     pressure_p = pressure;
-    pressure_n = min(1, data.pressure + pressure);
-    wind_p = wind;
-    wind_n = min(1, data.wind + wind);
+    pressure_n = max(0, min(1, data.pressure + pressure));
     moisture_p = moisture;
-    moisture_n = min(1, data.humidity + moisture);
+    moisture_n = max(0, min(1, data.moisture + moisture));
+    socket.emit("status", {temperature: temperature_n, pressure: pressure_n, moisture: moisture_n})
   });
 }
 
@@ -132,7 +128,6 @@ function keyPressed() {
     case RETURN:
       console.log(frameRate());
       console.log("temp", ts / c);
-      console.log("wind", ws / c);
       console.log("humi", hs / c);
       console.log("pres", ps / c);
       console.log(c);
@@ -208,13 +203,10 @@ function renderShader() {
   blurV.setUniform("direction", [0.0, 0.4+(1-pressure)*0.6]);
 
   g2.rect(0, 0, width, height);
-  gridShader.setUniform("u_resolution", [width, height]);
-  gridShader.setUniform("u_time", millis() / 1000.0);
   gridShader.setUniform("u_grid", g2);
   gridShader.setUniform("u_noise", noise);
 
   gridShader.setUniform("u_temperature", temperature);
-  gridShader.setUniform("u_wind", wind);
   gridShader.setUniform("u_pressure", pressure);
   gridShader.setUniform("u_moisture", moisture);
 
@@ -222,7 +214,6 @@ function renderShader() {
   rect(0, 0, width, height);
   // if (frameRate() < 20) {
   //   ts += temperature;
-  //   ws += wind;
   //   hs += moisture;
   //   ps += pressure;
   //   c++;
@@ -258,8 +249,8 @@ function renderFPS() {
 // returns the coordinates of each neighbour
 function neighbours([x, y]) {
   let neighbours = [];
-  if (x > 0) neighbours.push([x - 1, y]);
-  if (y > 0) neighbours.push([x, y - 1]);
+  if (x > 1) neighbours.push([x - 1, y]);
+  if (y > 1) neighbours.push([x, y - 1]);
   if (x < size - 1) neighbours.push([x + 1, y]);
   if (y < size - 1) neighbours.push([x, y + 1]);
   return neighbours;
@@ -273,13 +264,11 @@ function swapGrids() {
 
 function updateEnvironment() {
   // temperature = 0.5 + 0.5 * sin(millis() * 5 * 0.00004);
-  // wind = 0.5 + 0.5 * sin(millis() * 5 * 0.00016);
   // moisture = 0.75 + 0.25 * sin(millis() * 7 * 0.00002);
   // pressure = 0.75 + 0.25 * sin(millis() * 11 * 0.00002);
   if (transition < 1) {
     transition += 0.01;
     temperature = lerp(temperature_p, temperature_n, transition);
-    wind = lerp(wind_p, wind_n, transition);
     moisture = lerp(moisture_p, moisture_n, transition);
     pressure = lerp(pressure_p, pressure_n, transition);
   }
@@ -287,7 +276,7 @@ function updateEnvironment() {
   stimulationRigidity = floor(
     map(
       2 * pressure - moisture,
-      0,
+      -1,
       2,
       MIN_STIMULATION_RIGIDITY,
       MAX_STIMULATION_RIGIDITY
@@ -295,36 +284,36 @@ function updateEnvironment() {
   );
   exclusionThreshold = map(
     4 * pressure - temperature,
-    0,
+    -1,
     4,
     MIN_EXCLUSION_THRESHOLD,
     MAX_EXCLUSION_THRESHOLD
   );
   speed = map(
-    2 * temperature + 2 * pressure + wind - moisture,
-    0,
+    2 * temperature + 2 * pressure - moisture,
+    -1,
     4,
     MIN_SPEED,
     MAX_SPEED
   );
   stimulationSize = map(
-    3 * wind - pressure,
+    3 * pressure + moisture,
     0,
-    3,
+    4,
     MIN_STIMULATION_SIZE,
     MAX_STIMULATION_SIZE
   );
   volatility = map(
     temperature - 2 * moisture,
-    -1,
+    -2,
     1,
     MIN_VOLATILITY,
     MAX_VOLATILITY
   );
   randomFactor = map(
-    temperature - 2 * wind,
-    -1,
-    1,
+    temperature + pressure,
+    0,
+    2,
     MIN_RANDOM_FACTOR,
     MAX_RANDOM_FACTOR
   );
